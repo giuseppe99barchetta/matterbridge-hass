@@ -2,6 +2,23 @@
 
 # <img src="https://matterbridge.io/assets/matterbridge.svg" alt="Matterbridge Logo" width="64px" height="64px">&nbsp;&nbsp;&nbsp;Matterbridge hass plugin changelog
 
+[![npm version](https://img.shields.io/npm/v/matterbridge-hass.svg)](https://www.npmjs.com/package/matterbridge-hass)
+[![npm downloads](https://img.shields.io/npm/dt/matterbridge-hass.svg)](https://www.npmjs.com/package/matterbridge-hass)
+[![Docker Version](https://img.shields.io/docker/v/luligu/matterbridge/latest?label=docker%20version)](https://hub.docker.com/r/luligu/matterbridge)
+[![Docker Pulls](https://img.shields.io/docker/pulls/luligu/matterbridge?label=docker%20pulls)](https://hub.docker.com/r/luligu/matterbridge)
+![Node.js CI](https://github.com/Luligu/matterbridge-hass/actions/workflows/build.yml/badge.svg)
+![CodeQL](https://github.com/Luligu/matterbridge-hass/actions/workflows/codeql.yml/badge.svg)
+[![codecov](https://codecov.io/gh/Luligu/matterbridge-hass/branch/main/graph/badge.svg)](https://codecov.io/gh/Luligu/matterbridge-hass)
+[![tested with Vitest](https://img.shields.io/badge/tested_with-Vitest-6E9F18.svg?logo=vitest&logoColor=white)](https://vitest.dev)
+[![styled with Oxc](https://img.shields.io/badge/styled_with-Oxc-9BE4E0.svg?logo=oxc&logoColor=white)](https://oxc.rs/docs/guide/usage/formatter.html)
+[![linted with Oxc](https://img.shields.io/badge/linted_with-Oxc-9BE4E0.svg?logo=oxc&logoColor=white)](https://oxc.rs/docs/guide/usage/linter.html)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![TypeScript Native](https://img.shields.io/badge/TypeScript_Native-3178C6?logo=typescript&logoColor=white)](https://github.com/microsoft/typescript-go)
+[![ESM](https://img.shields.io/badge/ESM-Node.js-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![matterbridge.io](https://img.shields.io/badge/matterbridge.io-online-brightgreen)](https://matterbridge.io)
+
+---
+
 All notable changes to this project will be documented in this file.
 
 If you like this project and find it useful, please consider giving it a **star** on [GitHub](https://github.com/Luligu/matterbridge-hass) and **sponsoring** it.
@@ -11,6 +28,28 @@ If you like this project and find it useful, please consider giving it a **star*
 ## Possible issue upgrading the plugin
 
 > WARNING: The domains button, remote and media_player include an OnOff cluster. This will not make it possible to merge the entities on the same endpoint: if you have Alexa or Google you may want to either black list those domains or to split their entities.
+
+## [1.4.0] - 2026-07-17
+
+### Breaking changes
+
+- [matterbridge]: Require matterbridge v.3.9.0.
+
+### Changed
+
+- [package]: Apply uniform style.
+- [package]: Upgrade package.
+- [package]: Update dependencies.
+- [package]: Migrate the project from ESLint + Prettier + Jest to the native toolchain: oxlint + oxfmt + tsgo + Vitest.
+- [tests]: Convert the full test suite from Jest to Vitest and move it from `src` to `vitest`.
+- [package]: Replace deprecated Matterbridge device types with their current equivalents: `onOffOutlet` → `onOffPlugInUnit`, `dimmableOutlet` → `dimmablePlugInUnit`, `onOffMountedSwitch` → `mountedOnOffControl`, `onOffSwitch` → `onOffLightSwitch`, `dimmableSwitch` → `dimmerSwitch`, `colorTemperatureSwitch` → `colorDimmerSwitch`, `doorLockDevice` → `doorLock`, `coverDevice` → `windowCovering`, `thermostatDevice` → `thermostat`, `fanDevice` → `fan`.
+
+### Fixed
+
+- [platform]: Fix `onChangeLoggerLevel` not updating the platform's own logger level (it only updated `ha` and `stateCache`).
+- [helpers]: Fix `isDeviceEntity` incorrectly returning `true` for an entity with an `undefined` `device_id`.
+
+<a href="https://www.buymeacoffee.com/luligugithub"><img src="https://matterbridge.io/assets/bmc-button.svg" alt="Buy me a coffee" width="80"></a>
 
 ## [1.3.1] - 2026-06-07
 
