@@ -104,6 +104,8 @@ export interface HomeAssistantPlatformConfig extends PlatformConfig {
   postfix: string;
   airQualityRegex: string;
   enableServerRvc: boolean;
+  /** Outlet entity IDs to expose as standalone Matter server nodes when electrical measurements are available */
+  standaloneElectricalOutlets: string[];
   discardHiddenEntities: boolean;
   virtualControlLabel: string;
 }
@@ -241,6 +243,7 @@ export class HomeAssistantPlatform extends MatterbridgeDynamicPlatform {
       this.config.postfix = isValidString(this.config.postfix, 1, 3) ? this.config.postfix : '';
       this.config.airQualityRegex = isValidString(this.config.airQualityRegex, 1) ? this.config.airQualityRegex : '';
       this.config.enableServerRvc = isValidBoolean(this.config.enableServerRvc) ? this.config.enableServerRvc : true;
+      this.config.standaloneElectricalOutlets = isValidArray(this.config.standaloneElectricalOutlets, 1) ? this.config.standaloneElectricalOutlets : [];
       this.config.discardHiddenEntities = isValidBoolean(this.config.discardHiddenEntities) ? this.config.discardHiddenEntities : false;
       this.config.virtualControlLabel = isValidString(this.config.virtualControlLabel, 1) ? this.config.virtualControlLabel : '';
       this.config.debug ??= false;
@@ -673,7 +676,15 @@ export class HomeAssistantPlatform extends MatterbridgeDynamicPlatform {
       });
       const electricalMeasurementEndpoint = hasElectricalMeasurements ? getSingleOutletEndpoint(eligibleDeviceEntities) : undefined;
       const cumulativeEnergyEntityId = getCumulativeEnergyEntity(eligibleDeviceEntities, (entity) => this.ha.hassStates.get(entity.entity_id));
-      if (electricalMeasurementEndpoint) {
+      const standaloneElectricalOutletEntityIds = await this.createStandaloneElectricalOutlet(
+        device,
+        deviceName,
+        eligibleDeviceEntities,
+        electricalMeasurementEndpoint,
+        cumulativeEnergyEntityId,
+      );
+
+      if (electricalMeasurementEndpoint && standaloneElectricalOutletEntityIds.size === 0) {
         this.log.debug(`Device ${CYAN}${device.name}${db} has a single outlet ${CYAN}${electricalMeasurementEndpoint}${db}; electrical measurements will be attached to it`);
         const primaryOutletEntity = eligibleDeviceEntities.find((entity) => entity.entity_id === electricalMeasurementEndpoint);
         const primaryOutletState = primaryOutletEntity ? this.ha.hassStates.get(primaryOutletEntity.entity_id) : undefined;
@@ -692,6 +703,10 @@ export class HomeAssistantPlatform extends MatterbridgeDynamicPlatform {
         const [domain, _name] = entity.entity_id.split('.');
         const entityName = entity.name ?? entity.original_name ?? deviceName;
         let endpointName = entity.entity_id;
+        if (standaloneElectricalOutletEntityIds.has(entity.entity_id)) {
+          this.log.debug(`Lookup device ${CYAN}${device.name}${db} entity ${CYAN}${entity.entity_id}${db} is a standalone electrical outlet entity. Skipping bridge endpoint...`);
+          continue;
+        }
         if (isServiceSwitch(entity)) {
           this.log.debug(`Lookup device ${CYAN}${device.name}${db} service switch ${CYAN}${entity.entity_id}${db}. Skipping...`);
           continue;
@@ -981,6 +996,83 @@ export class HomeAssistantPlatform extends MatterbridgeDynamicPlatform {
     this.log.info(`Started platform ${idn}${this.config.name}${rs}${nf}: ${reason ?? ''}`);
   }
 
+  /**
+   * Creates and registers a selected electrical outlet as an independent Matter server node.
+   *
+   * @param {HassDevice} device - The Home Assistant device that owns the outlet.
+   * @param {string} deviceName - The validated Home Assistant device name.
+   * @param {HassEntity[]} eligibleDeviceEntities - Filtered and supported entities for the device.
+   * @param {EntityId | undefined} electricalMeasurementEndpoint - The only controllable outlet entity ID, if present.
+   * @param {EntityId | null} cumulativeEnergyEntityId - The cumulative energy entity safe to expose, if present.
+   * @returns {Promise<Set<EntityId>>} Entity IDs successfully registered on the standalone server node.
+   */
+  private async createStandaloneElectricalOutlet(
+    device: HassDevice,
+    deviceName: string,
+    eligibleDeviceEntities: HassEntity[],
+    electricalMeasurementEndpoint: EntityId | undefined,
+    cumulativeEnergyEntityId: EntityId | null,
+  ): Promise<Set<EntityId>> {
+    const standaloneEntityIds = new Set<EntityId>();
+    if (!electricalMeasurementEndpoint || !this.config.standaloneElectricalOutlets.includes(electricalMeasurementEndpoint)) return standaloneEntityIds;
+
+    const primaryOutletEntity = eligibleDeviceEntities.find((entity) => entity.entity_id === electricalMeasurementEndpoint);
+    const primaryOutletState = primaryOutletEntity ? this.ha.hassStates.get(primaryOutletEntity.entity_id) : undefined;
+    if (!primaryOutletEntity || !primaryOutletState) return standaloneEntityIds;
+
+    const primaryOutletName = getEntityName(this, primaryOutletEntity) ?? deviceName;
+    const namePostfix = isValidString(this.config.namePostfix, 1, 3) ? ' ' + this.config.namePostfix : '';
+    const standaloneOutletName = `${primaryOutletName} Standalone`.slice(0, 32 - namePostfix.length) + namePostfix;
+    const standaloneMutableDevice = new MutableDevice(
+      this.matterbridge,
+      standaloneOutletName,
+      isValidString(this.config.postfix, 1, 3) ? primaryOutletEntity.id.slice(0, 32 - this.config.postfix.length) + this.config.postfix : primaryOutletEntity.id.slice(0, 32),
+      0xfff1,
+      'HomeAssistant',
+      0x8000,
+      device.model ?? 'Standalone Electrical Outlet',
+    );
+    standaloneMutableDevice.setLogLevel(this.log.logLevel);
+    standaloneMutableDevice.setMode('server');
+    standaloneMutableDevice.setComposedType('Hass Standalone Electrical Outlet');
+    standaloneMutableDevice.setConfigUrl(
+      `${(this.config.host as string | undefined)?.replace('ws://', 'http://').replace('wss://', 'https://')}/config/devices/device/${device.id}`,
+    );
+
+    addControlEntity(this, standaloneMutableDevice, primaryOutletEntity, primaryOutletState, this.commandHandler.bind(this), this.subscribeHandler.bind(this));
+    const candidateEntityIds = new Set<EntityId>([primaryOutletEntity.entity_id]);
+    for (const entity of eligibleDeviceEntities) {
+      const state = this.ha.hassStates.get(entity.entity_id);
+      if (!state) continue;
+      const endpointName = addSensorEntity(this, standaloneMutableDevice, entity, state, this.airQualityRegex, false, electricalMeasurementEndpoint, cumulativeEnergyEntityId);
+      if (endpointName === electricalMeasurementEndpoint) candidateEntityIds.add(entity.entity_id);
+    }
+    if (candidateEntityIds.size === 1) {
+      standaloneMutableDevice.destroy();
+      return standaloneEntityIds;
+    }
+    standaloneMutableDevice.moveEndpointToMain(electricalMeasurementEndpoint);
+
+    try {
+      standaloneMutableDevice.create();
+      standaloneMutableDevice.logMutableDevice();
+      this.log.debug(`Registering standalone electrical outlet ${dn}${standaloneOutletName}${db}...`);
+      await this.registerDevice(standaloneMutableDevice.getEndpoint());
+      /* v8 ignore next cause is not testable */
+      if (!this.dryRun && !standaloneMutableDevice.getEndpoint().owner) throw new Error(`Endpoint not created`);
+      for (const entityId of candidateEntityIds) {
+        this.matterbridgeDevices.set(entityId, standaloneMutableDevice.getEndpoint());
+        this.endpointNames.set(entityId, '');
+        standaloneEntityIds.add(entityId);
+      }
+    } catch (error) {
+      this.failedDevices++;
+      inspectError(this.log, `Failed to register standalone electrical outlet ${dn}${standaloneOutletName}${er}`, error);
+    }
+    standaloneMutableDevice.destroy();
+    return standaloneEntityIds;
+  }
+
   override async onConfigure(): Promise<void> {
     await super.onConfigure();
     this.log.info(`Configuring platform ${idn}${this.config.name}${rs}${nf}...`);
@@ -1254,7 +1346,7 @@ export class HomeAssistantPlatform extends MatterbridgeDynamicPlatform {
     let endpoint: MatterbridgeEndpoint | undefined;
     if (isDeviceEntity(entity)) {
       // Device entity
-      const matterbridgeDevice = this.matterbridgeDevices.get(entity.device_id);
+      const matterbridgeDevice = this.matterbridgeDevices.get(entity.entity_id) ?? this.matterbridgeDevices.get(entity.device_id);
       if (!matterbridgeDevice) {
         this.log.debug(`Subscribe handler: Matterbridge device ${entity.device_id} for ${entity.entity_id} not found`);
         return;
@@ -1337,7 +1429,8 @@ export class HomeAssistantPlatform extends MatterbridgeDynamicPlatform {
     // Set the device reachable attribute to false if the new state is unavailable and skip the update since the device is unreachable. Cache the last state of the entity to be able to create it on restart.
     if (old_state.state !== 'unavailable' && new_state.state === 'unavailable') {
       this.stateCache.add(old_state);
-      await matterbridgeDevice.setAttribute(BridgedDeviceBasicInformation, 'reachable', false, matterbridgeDevice.log);
+      if (matterbridgeDevice.hasClusterServer(BridgedDeviceBasicInformation.id))
+        await matterbridgeDevice.setAttribute(BridgedDeviceBasicInformation, 'reachable', false, matterbridgeDevice.log);
       endpoint.log.debug(
         `Received update for entity ${CYAN}${entityId}${db} but the new state is unavailable, skipping the update and waiting for the device to become reachable again...`,
       );
@@ -1346,11 +1439,13 @@ export class HomeAssistantPlatform extends MatterbridgeDynamicPlatform {
     // Set the device reachable attribute to true if the new state is available and remove the cached state since the device is reachable again.
     if (old_state.state === 'unavailable' && new_state.state !== 'unavailable') {
       this.stateCache.remove(old_state.entity_id);
-      await matterbridgeDevice.setAttribute(BridgedDeviceBasicInformation, 'reachable', true, matterbridgeDevice.log);
+      if (matterbridgeDevice.hasClusterServer(BridgedDeviceBasicInformation.id))
+        await matterbridgeDevice.setAttribute(BridgedDeviceBasicInformation, 'reachable', true, matterbridgeDevice.log);
     }
     // Set the device reachable attribute to false if the new state is unavailable and skip the update since the device is unreachable. From onConfigure().
     if (old_state.state === 'unavailable' && new_state.state === 'unavailable') {
-      await matterbridgeDevice.setAttribute(BridgedDeviceBasicInformation, 'reachable', false, matterbridgeDevice.log);
+      if (matterbridgeDevice.hasClusterServer(BridgedDeviceBasicInformation.id))
+        await matterbridgeDevice.setAttribute(BridgedDeviceBasicInformation, 'reachable', false, matterbridgeDevice.log);
       endpoint.log.debug(
         `Received update for entity ${CYAN}${entityId}${db} but the new state is unavailable, skipping the update and waiting for the device to become reachable again...`,
       );

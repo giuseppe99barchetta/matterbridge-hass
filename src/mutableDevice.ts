@@ -258,6 +258,32 @@ export class MutableDevice {
   }
 
   /**
+   * Moves an existing child endpoint definition to the main endpoint.
+   *
+   * This is useful for standalone server nodes, where a single application
+   * endpoint must be the node's root endpoint instead of a bridged child.
+   *
+   * @param {string} endpoint - The child endpoint identifier to move.
+   * @returns {this} The current instance for method chaining.
+   */
+  moveEndpointToMain(endpoint: string): this {
+    if (endpoint === '') return this;
+
+    const childDevice = this.get(endpoint);
+    const mainDevice = this.get('');
+    mainDevice.deviceTypes.push(...childDevice.deviceTypes);
+    mainDevice.clusterServersIds.push(...childDevice.clusterServersIds);
+    mainDevice.clusterServersObjs.push(...childDevice.clusterServersObjs);
+    mainDevice.clusterClientsIds.push(...childDevice.clusterClientsIds);
+    mainDevice.clusterClientsObjs.push(...childDevice.clusterClientsObjs);
+    mainDevice.commandHandlers.push(...childDevice.commandHandlers);
+    mainDevice.subscribeHandlers.push(...childDevice.subscribeHandlers);
+    this.mutableDevices.delete(endpoint);
+    this.nonRemappableEndpoints.delete(endpoint);
+    return this;
+  }
+
+  /**
    * Retrieves the set of the split Matterbridge endpoints of the device.
    *
    * @returns {Set<string>} The set of the split Matterbridge endpoints of the device.

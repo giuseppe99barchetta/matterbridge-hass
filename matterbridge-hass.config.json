@@ -23,6 +23,7 @@
   "postfix": "",
   "airQualityRegex": "",
   "enableServerRvc": true,
+  "standaloneElectricalOutlets": [],
   "discardHiddenEntities": true,
   "virtualControlLabel": "",
   "debug": false,
