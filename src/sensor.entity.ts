@@ -42,6 +42,7 @@ import type { MutableDevice } from './mutableDevice.js';
  * @param {HassState} state - The state of the Home Assistant entity
  * @param {RegExp | undefined} airQualityRegex - The regex to match air quality sensor entities
  * @param {boolean} battery - If the entity belongs to a battery powered device
+ * @param {string | undefined} electricalMeasurementEndpoint - The outlet endpoint to which electrical measurements should be attached
  *
  * @returns {string | undefined} - The endpoint name for the sensor, if found; otherwise, undefined
  */
@@ -52,6 +53,7 @@ export function addSensorEntity(
   state: HassState,
   airQualityRegex: RegExp | undefined,
   battery: boolean,
+  electricalMeasurementEndpoint?: string,
 ): string | undefined {
   let endpointName: string | undefined = undefined;
   const domain = getDomain(entity.entity_id);
@@ -75,7 +77,13 @@ export function addSensorEntity(
       if (hassDomainSensor.deviceType === powerSource && state.attributes['state_class'] === 'measurement' && state.attributes['device_class'] === 'voltage' && !battery) return; // Skip powerSource voltage sensor if the device is not battery powered
       // oxfmt-ignore
       if (hassDomainSensor.deviceType === electricalSensor && state.attributes['state_class'] === 'measurement' && state.attributes['device_class'] === 'voltage' && battery) return; // Skip electricalSensor voltage sensor if the device is battery powered
-      if (hassDomainSensor.endpoint === undefined) {
+      const attachElectricalMeasurement = hassDomainSensor.deviceType === electricalSensor && electricalMeasurementEndpoint !== undefined;
+      if (attachElectricalMeasurement) {
+        endpointName = electricalMeasurementEndpoint;
+        platform.log.debug(
+          `- electrical sensor domain ${hassDomainSensor.domain} stateClass ${hassDomainSensor.withStateClass} deviceClass ${hassDomainSensor.withDeviceClass} endpoint '${CYAN}${endpointName}${db}' for entity ${CYAN}${entity.entity_id}${db}`,
+        );
+      } else if (hassDomainSensor.endpoint === undefined) {
         endpointName = entity.entity_id; // Use the entity ID as the endpoint name
       } else {
         endpointName = hassDomainSensor.endpoint; // Remap the endpoint name for the entity
@@ -84,10 +92,21 @@ export function addSensorEntity(
         );
       }
       platform.log.debug(`+ sensor device ${CYAN}${hassDomainSensor.deviceType.name}${db} cluster ${CYAN}${getClusterNameById(hassDomainSensor.clusterId)}${db}`);
-      mutableDevice.addDeviceTypes(endpointName, hassDomainSensor.deviceType);
+      if (!attachElectricalMeasurement) mutableDevice.addDeviceTypes(endpointName, hassDomainSensor.deviceType);
       mutableDevice.addClusterServerIds(endpointName, hassDomainSensor.clusterId);
-      if (isValidString(state.attributes['friendly_name'])) mutableDevice.setFriendlyName(endpointName, state.attributes['friendly_name']);
+      if (!attachElectricalMeasurement && isValidString(state.attributes['friendly_name'])) mutableDevice.setFriendlyName(endpointName, state.attributes['friendly_name']);
       platform.log.debug(`- state ${debugStringify(state)}`);
     });
   return endpointName;
+}
+
+/**
+ * Returns the endpoint of the only outlet entity in a device.
+ *
+ * @param {HassEntity[]} entities - The eligible entities belonging to a Home Assistant device
+ * @returns {string | undefined} - The single outlet entity ID, if exactly one exists; otherwise, undefined
+ */
+export function getSingleOutletEndpoint(entities: HassEntity[]): string | undefined {
+  const outlets = entities.filter((entity) => getDomain(entity.entity_id) === 'switch');
+  return outlets.length === 1 ? outlets[0].entity_id : undefined;
 }

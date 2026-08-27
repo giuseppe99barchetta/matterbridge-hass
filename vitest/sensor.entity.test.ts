@@ -20,7 +20,7 @@ import {
 
 import { hassDomainSensorsConverter } from '../src/converters.js';
 import type { MutableDevice } from '../src/mutableDevice.js';
-import { addSensorEntity } from '../src/sensor.entity.js';
+import { addSensorEntity, getSingleOutletEndpoint } from '../src/sensor.entity.js';
 
 // Lightweight mock factory replicating just the methods used by addSensorEntity
 function createMockMutableDevice(): MutableDevice & {
@@ -201,6 +201,71 @@ describe('addSensorEntity', () => {
     const epPower = addSensorEntity(mockPlatform, md, entityPower, statePower, undefined, false) as string;
     expect(epPower).toBe('PowerEnergy');
     expect(md.clusters['PowerEnergy']).toContain(ElectricalPowerMeasurement.id);
+  });
+
+  it('attaches power measurement to the endpoint of a single outlet', () => {
+    const md = createMockMutableDevice();
+    const outletEndpoint = getSingleOutletEndpoint([{ entity_id: 'switch.outlet' } as any, baseEntity('power')]);
+    const ep = addSensorEntity(mockPlatform, md, baseEntity('power'), buildState('power', 'measurement', 'Power'), undefined, false, outletEndpoint);
+
+    expect(ep).toBe('switch.outlet');
+    expect(md.clusters['switch.outlet']).toContain(ElectricalPowerMeasurement.id);
+    expect(Object.values(md.deviceTypes).flat()).not.toContain(electricalSensor.code);
+  });
+
+  it('attaches power and energy measurements to the endpoint of a single outlet', () => {
+    const md = createMockMutableDevice();
+    const outletEndpoint = getSingleOutletEndpoint([{ entity_id: 'switch.outlet' } as any, baseEntity('power'), baseEntity('energy')]);
+
+    expect(addSensorEntity(mockPlatform, md, baseEntity('power'), buildState('power', 'measurement'), undefined, false, outletEndpoint)).toBe('switch.outlet');
+    expect(addSensorEntity(mockPlatform, md, baseEntity('energy'), buildState('energy', 'total_increasing'), undefined, false, outletEndpoint)).toBe('switch.outlet');
+    expect(md.clusters['switch.outlet']).toContain(ElectricalPowerMeasurement.id);
+    expect(md.clusters['switch.outlet']).toContain(ElectricalEnergyMeasurement.id);
+  });
+
+  it('attaches voltage, current, power, and energy measurements to the endpoint of a single outlet', () => {
+    const md = createMockMutableDevice();
+    const outletEndpoint = getSingleOutletEndpoint([{ entity_id: 'switch.outlet' } as any]);
+    const sensors = [
+      ['voltage', 'measurement'],
+      ['current', 'measurement'],
+      ['power', 'measurement'],
+      ['energy', 'total_increasing'],
+    ] as const;
+
+    for (const [deviceClass, stateClass] of sensors) {
+      expect(addSensorEntity(mockPlatform, md, baseEntity(deviceClass), buildState(deviceClass, stateClass), undefined, false, outletEndpoint)).toBe('switch.outlet');
+    }
+    expect(md.clusters['switch.outlet']).toContain(ElectricalPowerMeasurement.id);
+    expect(md.clusters['switch.outlet']).toContain(ElectricalEnergyMeasurement.id);
+    expect(Object.values(md.deviceTypes).flat()).not.toContain(electricalSensor.code);
+  });
+
+  it('keeps electrical measurements separate when a device has no outlet', () => {
+    const md = createMockMutableDevice();
+    const outletEndpoint = getSingleOutletEndpoint([baseEntity('power')]);
+
+    expect(outletEndpoint).toBeUndefined();
+    expect(addSensorEntity(mockPlatform, md, baseEntity('power'), buildState('power', 'measurement'), undefined, false, outletEndpoint)).toBe('PowerEnergy');
+    expect(md.deviceTypes['PowerEnergy']).toContain(electricalSensor.code);
+  });
+
+  it('keeps electrical measurements separate when a device has multiple outlets', () => {
+    const md = createMockMutableDevice();
+    const outletEndpoint = getSingleOutletEndpoint([{ entity_id: 'switch.left' } as any, { entity_id: 'switch.right' } as any, baseEntity('power')]);
+
+    expect(outletEndpoint).toBeUndefined();
+    expect(addSensorEntity(mockPlatform, md, baseEntity('power'), buildState('power', 'measurement'), undefined, false, outletEndpoint)).toBe('PowerEnergy');
+    expect(md.deviceTypes['PowerEnergy']).toContain(electricalSensor.code);
+  });
+
+  it('does not remap non-electrical sensors to the outlet endpoint', () => {
+    const md = createMockMutableDevice();
+    const ep = addSensorEntity(mockPlatform, md, baseEntity('temperature'), buildState('temperature', 'measurement'), undefined, false, 'switch.outlet');
+
+    expect(ep).toBe('sensor.test_temperature');
+    expect(md.deviceTypes['sensor.test_temperature']).toContain(temperatureSensor.code);
+    expect(md.clusters['switch.outlet']).toBeUndefined();
   });
 
   it('adds air quality converter (aqi) without regex (endpoint AirQuality)', () => {

@@ -656,6 +656,91 @@ describe('Matterbridge ' + NAME, () => {
     await cleanup();
   });
 
+  it('should attach electrical measurements to a device with a single outlet', async () => {
+    const outletDevice = {
+      area_id: null,
+      disabled_by: null,
+      entry_type: null,
+      id: 'd80898f83188759ed7329e922f00ee7d',
+      labels: [],
+      name: 'Monitored Outlet',
+      name_by_user: null,
+    } as unknown as HassDevice;
+    const outletEntity = {
+      area_id: null,
+      device_id: outletDevice.id,
+      disabled_by: null,
+      entity_category: null,
+      entity_id: 'switch.monitored_outlet',
+      has_entity_name: true,
+      id: '0b25a337cb83edefb1d310444ad2b0ad',
+      labels: [],
+      name: null,
+      original_name: 'Monitored Outlet',
+    } as unknown as HassEntity;
+    const powerEntity = {
+      area_id: null,
+      device_id: outletDevice.id,
+      disabled_by: null,
+      entity_category: null,
+      entity_id: 'sensor.monitored_outlet_power',
+      has_entity_name: true,
+      id: '0b25a337cb83edefb1d310444ad2b0ae',
+      labels: [],
+      name: null,
+      original_name: 'Monitored Outlet Power',
+    } as unknown as HassEntity;
+    const energyEntity = {
+      area_id: null,
+      device_id: outletDevice.id,
+      disabled_by: null,
+      entity_category: null,
+      entity_id: 'sensor.monitored_outlet_energy',
+      has_entity_name: true,
+      id: '0b25a337cb83edefb1d310444ad2b0af',
+      labels: [],
+      name: null,
+      original_name: 'Monitored Outlet Energy',
+    } as unknown as HassEntity;
+    const outletState = {
+      entity_id: outletEntity.entity_id,
+      state: 'on',
+      attributes: { device_class: 'outlet', friendly_name: 'Monitored Outlet' },
+    } as unknown as HassState;
+    const powerState = {
+      entity_id: powerEntity.entity_id,
+      state: 23,
+      attributes: { state_class: 'measurement', device_class: 'power', unit_of_measurement: 'W', friendly_name: 'Monitored Outlet Power' },
+    } as unknown as HassState;
+    const energyState = {
+      entity_id: energyEntity.entity_id,
+      state: 100,
+      attributes: { state_class: 'total_increasing', device_class: 'energy', unit_of_measurement: 'kWh', friendly_name: 'Monitored Outlet Energy' },
+    } as unknown as HassState;
+
+    haPlatform.ha.hassDevices.set(outletDevice.id, outletDevice);
+    haPlatform.ha.hassEntities.set(outletEntity.entity_id, outletEntity);
+    haPlatform.ha.hassEntities.set(powerEntity.entity_id, powerEntity);
+    haPlatform.ha.hassEntities.set(energyEntity.entity_id, energyEntity);
+    haPlatform.ha.hassStates.set(outletState.entity_id, outletState);
+    haPlatform.ha.hassStates.set(powerState.entity_id, powerState);
+    haPlatform.ha.hassStates.set(energyState.entity_id, energyState);
+
+    await haPlatform.onStart('Test reason');
+    device = haPlatform.matterbridgeDevices.get(outletDevice.id) as MatterbridgeEndpoint;
+    expect(device).toBeDefined();
+    expect(haPlatform.endpointNames.get(outletEntity.entity_id)).toBe('');
+    expect(haPlatform.endpointNames.get(powerEntity.entity_id)).toBe('');
+    expect(haPlatform.endpointNames.get(energyEntity.entity_id)).toBe('');
+
+    await haPlatform.onConfigure();
+    expect(device.getAttribute(OnOff.id, 'onOff')).toBe(true);
+    expect(device.getAttribute(ElectricalPowerMeasurement.id, 'activePower')).toBe(23000);
+    expect(device.getAttribute(ElectricalEnergyMeasurement.id, 'cumulativeEnergyImported')).toEqual({ energy: 100000000 });
+
+    await cleanup();
+  });
+
   it('should call onStart and register a PowerSource device', async () => {
     const batteryDevice = {
       area_id: null,

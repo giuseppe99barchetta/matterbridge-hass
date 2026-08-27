@@ -29,6 +29,12 @@ If you like this project and find it useful, please consider giving it a **star*
 
 > WARNING: The domains button, remote and media_player include an OnOff cluster. This will not make it possible to merge the entities on the same endpoint: if you have Alexa or Google you may want to either black list those domains or to split their entities.
 
+## [Unreleased]
+
+### Fixed
+
+- [sensor]: Attach electrical measurement clusters to a device's single switch outlet, allowing Apple Home to associate energy consumption with that outlet.
+
 ## [1.4.0] - 2026-07-17
 
 ### Breaking changes
