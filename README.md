@@ -140,6 +140,8 @@ These domains are supported also like device entities and split entities.
 
 (3) - Must be an entity that belongs to a device. Battery alone is not a device in Matter.
 
+When a Home Assistant device exposes exactly one `switch` together with electrical sensors (`voltage`, `current`, `power`, or `energy`), the electrical measurement clusters are added to that switch's Matter outlet endpoint. This lets Apple Home associate consumption with the outlet. Devices with no switch or more than one switch continue to expose electrical measurements as a separate electrical sensor endpoint.
+
 ## Supported binary_sensors:
 
 | Domain        | Supported device class (1)           | Matter device type  |
