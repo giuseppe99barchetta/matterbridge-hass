@@ -20,7 +20,7 @@ import {
 
 import { hassDomainSensorsConverter } from '../src/converters.js';
 import type { MutableDevice } from '../src/mutableDevice.js';
-import { addSensorEntity, getSingleOutletEndpoint } from '../src/sensor.entity.js';
+import { addSensorEntity, getCumulativeEnergyEntity, getSingleOutletEndpoint, isServiceSwitch } from '../src/sensor.entity.js';
 
 // Lightweight mock factory replicating just the methods used by addSensorEntity
 function createMockMutableDevice(): MutableDevice & {
@@ -257,6 +257,56 @@ describe('addSensorEntity', () => {
     expect(outletEndpoint).toBeUndefined();
     expect(addSensorEntity(mockPlatform, md, baseEntity('power'), buildState('power', 'measurement'), undefined, false, outletEndpoint)).toBe('PowerEnergy');
     expect(md.deviceTypes['PowerEnergy']).toContain(electricalSensor.code);
+  });
+
+  it('selects the controllable outlet and ignores configuration and diagnostic switches', () => {
+    const entities = [
+      { entity_id: 'switch.outlet', entity_category: null },
+      { entity_id: 'switch.outlet_network_indicator', entity_category: 'diagnostic' },
+      { entity_id: 'switch.outlet_control_protect', entity_category: 'config' },
+    ] as any[];
+
+    expect(getSingleOutletEndpoint(entities)).toBe('switch.outlet');
+    expect(isServiceSwitch(entities[1])).toBe(true);
+    expect(isServiceSwitch(entities[2])).toBe(true);
+  });
+
+  it('does not select an outlet when two controllable switches are present', () => {
+    expect(
+      getSingleOutletEndpoint([
+        { entity_id: 'switch.left', entity_category: null },
+        { entity_id: 'switch.right', entity_category: null },
+        { entity_id: 'switch.service', entity_category: 'config' },
+      ] as any[]),
+    ).toBeUndefined();
+  });
+
+  it('uses only the non-periodic cumulative energy sensor', () => {
+    const entities = [
+      { entity_id: 'sensor.outlet_energy', name: null, original_name: 'Outlet Energy' },
+      { entity_id: 'sensor.outlet_energy_today', name: null, original_name: 'Outlet Energy Today' },
+      { entity_id: 'sensor.outlet_energy_yesterday', name: null, original_name: 'Outlet Energy Yesterday' },
+      { entity_id: 'sensor.outlet_energy_month', name: null, original_name: 'Outlet Energy Month' },
+    ] as any[];
+    const states = new Map(entities.map((entity) => [entity.entity_id, { attributes: { device_class: 'energy', state_class: 'total_increasing' } }]));
+
+    expect(getCumulativeEnergyEntity(entities, (entity) => states.get(entity.entity_id) as any)).toBe('sensor.outlet_energy');
+
+    const md = createMockMutableDevice();
+    for (const entity of entities.slice(1)) {
+      expect(addSensorEntity(mockPlatform, md, entity, states.get(entity.entity_id) as any, undefined, false, 'switch.outlet', 'sensor.outlet_energy')).toBeUndefined();
+    }
+    expect(md.clusters['switch.outlet']).toBeUndefined();
+  });
+
+  it('does not select an ambiguous set of cumulative energy sensors', () => {
+    const entities = [
+      { entity_id: 'sensor.outlet_energy_import', name: null, original_name: 'Outlet Energy Import' },
+      { entity_id: 'sensor.outlet_energy_export', name: null, original_name: 'Outlet Energy Export' },
+    ] as any[];
+    const states = new Map(entities.map((entity) => [entity.entity_id, { attributes: { device_class: 'energy', state_class: 'total_increasing' } }]));
+
+    expect(getCumulativeEnergyEntity(entities, (entity) => states.get(entity.entity_id) as any)).toBeNull();
   });
 
   it('does not remap non-electrical sensors to the outlet endpoint', () => {

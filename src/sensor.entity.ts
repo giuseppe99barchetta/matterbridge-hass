@@ -23,7 +23,7 @@
 
 import { airQualitySensor, electricalSensor, powerSource } from 'matterbridge';
 import { CYAN, db, debugStringify } from 'matterbridge/logger';
-import { AirQuality } from 'matterbridge/matter/clusters';
+import { AirQuality, ElectricalEnergyMeasurement } from 'matterbridge/matter/clusters';
 import { getClusterNameById } from 'matterbridge/matter/types';
 import { isValidString } from 'matterbridge/utils';
 
@@ -43,6 +43,7 @@ import type { MutableDevice } from './mutableDevice.js';
  * @param {RegExp | undefined} airQualityRegex - The regex to match air quality sensor entities
  * @param {boolean} battery - If the entity belongs to a battery powered device
  * @param {string | undefined} electricalMeasurementEndpoint - The outlet endpoint to which electrical measurements should be attached
+ * @param {string | null | undefined} cumulativeEnergyEntityId - The only energy entity allowed to update cumulative imported energy; null disables energy import
  *
  * @returns {string | undefined} - The endpoint name for the sensor, if found; otherwise, undefined
  */
@@ -54,6 +55,7 @@ export function addSensorEntity(
   airQualityRegex: RegExp | undefined,
   battery: boolean,
   electricalMeasurementEndpoint?: string,
+  cumulativeEnergyEntityId?: string | null,
 ): string | undefined {
   let endpointName: string | undefined = undefined;
   const domain = getDomain(entity.entity_id);
@@ -73,6 +75,7 @@ export function addSensorEntity(
   hassDomainSensorsConverter
     .filter((d) => d.domain === domain && d.withStateClass === state.attributes['state_class'] && d.withDeviceClass === state.attributes['device_class'])
     .forEach((hassDomainSensor) => {
+      if (hassDomainSensor.clusterId === ElectricalEnergyMeasurement.id && cumulativeEnergyEntityId !== undefined && entity.entity_id !== cumulativeEnergyEntityId) return;
       // oxfmt-ignore
       if (hassDomainSensor.deviceType === powerSource && state.attributes['state_class'] === 'measurement' && state.attributes['device_class'] === 'voltage' && !battery) return; // Skip powerSource voltage sensor if the device is not battery powered
       // oxfmt-ignore
@@ -107,6 +110,42 @@ export function addSensorEntity(
  * @returns {string | undefined} - The single outlet entity ID, if exactly one exists; otherwise, undefined
  */
 export function getSingleOutletEndpoint(entities: HassEntity[]): string | undefined {
-  const outlets = entities.filter((entity) => getDomain(entity.entity_id) === 'switch');
+  const outlets = entities.filter((entity) => getDomain(entity.entity_id) === 'switch' && !isServiceSwitch(entity));
   return outlets.length === 1 ? outlets[0].entity_id : undefined;
+}
+
+/**
+ * Returns whether a switch is a Home Assistant configuration or diagnostic control.
+ *
+ * @param {HassEntity} entity - The Home Assistant entity to inspect
+ * @returns {boolean} True when the switch is a service control rather than an outlet
+ */
+export function isServiceSwitch(entity: HassEntity): boolean {
+  return getDomain(entity.entity_id) === 'switch' && ['config', 'diagnostic'].includes(entity.entity_category ?? '');
+}
+
+/**
+ * Finds the sole cumulative energy sensor that is safe to map to Matter imported energy.
+ *
+ * Period-based statistics reset and must not overwrite the device's cumulative import value.
+ * When more than one non-period cumulative sensor exists, no sensor is selected to avoid an
+ * ambiguous mapping.
+ *
+ * @param {HassEntity[]} entities - The eligible entities belonging to a Home Assistant device
+ * @param {(entity: HassEntity) => HassState | undefined} getState - Resolves the current Home Assistant state for an entity
+ * @returns {string | null} The entity ID of the sole cumulative energy sensor, or null when none is safe
+ */
+export function getCumulativeEnergyEntity(entities: HassEntity[], getState: (entity: HassEntity) => HassState | undefined): string | null {
+  const periodName = /(?:^|[_.\s-])(today|yesterday|daily|week(?:ly)?|month(?:ly)?|year(?:ly)?)(?:$|[_.\s-])/i;
+  const candidates = entities.filter((entity) => {
+    const state = getState(entity);
+    const identity = `${entity.entity_id} ${entity.name ?? ''} ${entity.original_name ?? ''}`;
+    return (
+      getDomain(entity.entity_id) === 'sensor' &&
+      state?.attributes['state_class'] === 'total_increasing' &&
+      state.attributes['device_class'] === 'energy' &&
+      !periodName.test(identity)
+    );
+  });
+  return candidates.length === 1 ? candidates[0].entity_id : null;
 }
