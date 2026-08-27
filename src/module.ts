@@ -675,6 +675,14 @@ export class HomeAssistantPlatform extends MatterbridgeDynamicPlatform {
       const cumulativeEnergyEntityId = getCumulativeEnergyEntity(eligibleDeviceEntities, (entity) => this.ha.hassStates.get(entity.entity_id));
       if (electricalMeasurementEndpoint) {
         this.log.debug(`Device ${CYAN}${device.name}${db} has a single outlet ${CYAN}${electricalMeasurementEndpoint}${db}; electrical measurements will be attached to it`);
+        const primaryOutletEntity = eligibleDeviceEntities.find((entity) => entity.entity_id === electricalMeasurementEndpoint);
+        const primaryOutletState = primaryOutletEntity ? this.ha.hassStates.get(primaryOutletEntity.entity_id) : undefined;
+        if (primaryOutletEntity && primaryOutletState) {
+          // Create the complete outlet endpoint before adding electrical sensors. This keeps
+          // the OnOff and electrical clusters on the same child endpoint by construction.
+          addControlEntity(this, mutableDevice, primaryOutletEntity, primaryOutletState, this.commandHandler.bind(this), this.subscribeHandler.bind(this));
+          this.endpointNames.set(primaryOutletEntity.entity_id, electricalMeasurementEndpoint);
+        }
         mutableDevice.preventRemapping(electricalMeasurementEndpoint);
       }
 
@@ -734,7 +742,10 @@ export class HomeAssistantPlatform extends MatterbridgeDynamicPlatform {
           this.endpointNames.set(entity.entity_id, endpointName); // Set the endpoint name for the entity
         }
         // Lookup and add core domains entity.
-        const eControl = addControlEntity(this, mutableDevice, entity, hassState, this.commandHandler.bind(this), this.subscribeHandler.bind(this));
+        const eControl =
+          entity.entity_id === electricalMeasurementEndpoint
+            ? electricalMeasurementEndpoint
+            : addControlEntity(this, mutableDevice, entity, hassState, this.commandHandler.bind(this), this.subscribeHandler.bind(this));
         if (eControl !== undefined) {
           endpointName = eControl;
           this.endpointNames.set(entity.entity_id, endpointName); // Set the endpoint name for the entity

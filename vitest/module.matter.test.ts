@@ -706,7 +706,7 @@ describe('Matterbridge ' + NAME, () => {
       area_id: null,
       device_id: outletDevice.id,
       disabled_by: null,
-      entity_category: 'diagnostic',
+      entity_category: null,
       entity_id: 'switch.monitored_outlet_network_indicator',
       has_entity_name: true,
       id: '0b25a337cb83edefb1d310444ad2b0b0',
@@ -718,13 +718,31 @@ describe('Matterbridge ' + NAME, () => {
       area_id: null,
       device_id: outletDevice.id,
       disabled_by: null,
-      entity_category: 'config',
+      entity_category: null,
       entity_id: 'switch.monitored_outlet_control_protect',
       has_entity_name: true,
       id: '0b25a337cb83edefb1d310444ad2b0b1',
       labels: [],
       name: null,
       original_name: 'Monitored Outlet Control Protect',
+    } as unknown as HassEntity;
+    const energyTodayEntity = {
+      ...energyEntity,
+      entity_id: 'sensor.monitored_outlet_energy_today',
+      id: '0b25a337cb83edefb1d310444ad2b0b2',
+      original_name: 'Monitored Outlet Energy Today',
+    } as unknown as HassEntity;
+    const energyYesterdayEntity = {
+      ...energyEntity,
+      entity_id: 'sensor.monitored_outlet_energy_yesterday',
+      id: '0b25a337cb83edefb1d310444ad2b0b3',
+      original_name: 'Monitored Outlet Energy Yesterday',
+    } as unknown as HassEntity;
+    const energyMonthEntity = {
+      ...energyEntity,
+      entity_id: 'sensor.monitored_outlet_energy_month',
+      id: '0b25a337cb83edefb1d310444ad2b0b4',
+      original_name: 'Monitored Outlet Energy Month',
     } as unknown as HassEntity;
     const outletState = {
       entity_id: outletEntity.entity_id,
@@ -747,14 +765,20 @@ describe('Matterbridge ' + NAME, () => {
     } as unknown as HassState;
 
     haPlatform.ha.hassDevices.set(outletDevice.id, outletDevice);
-    haPlatform.ha.hassEntities.set(outletEntity.entity_id, outletEntity);
     haPlatform.ha.hassEntities.set(powerEntity.entity_id, powerEntity);
     haPlatform.ha.hassEntities.set(energyEntity.entity_id, energyEntity);
+    haPlatform.ha.hassEntities.set(energyTodayEntity.entity_id, energyTodayEntity);
+    haPlatform.ha.hassEntities.set(energyYesterdayEntity.entity_id, energyYesterdayEntity);
+    haPlatform.ha.hassEntities.set(energyMonthEntity.entity_id, energyMonthEntity);
+    haPlatform.ha.hassEntities.set(outletEntity.entity_id, outletEntity);
     haPlatform.ha.hassEntities.set(networkIndicatorEntity.entity_id, networkIndicatorEntity);
     haPlatform.ha.hassEntities.set(outletProtectEntity.entity_id, outletProtectEntity);
     haPlatform.ha.hassStates.set(outletState.entity_id, outletState);
     haPlatform.ha.hassStates.set(powerState.entity_id, powerState);
     haPlatform.ha.hassStates.set(energyState.entity_id, energyState);
+    haPlatform.ha.hassStates.set(energyTodayEntity.entity_id, { ...energyState, entity_id: energyTodayEntity.entity_id, state: '4' });
+    haPlatform.ha.hassStates.set(energyYesterdayEntity.entity_id, { ...energyState, entity_id: energyYesterdayEntity.entity_id, state: '5' });
+    haPlatform.ha.hassStates.set(energyMonthEntity.entity_id, { ...energyState, entity_id: energyMonthEntity.entity_id, state: '6' });
     haPlatform.ha.hassStates.set(networkIndicatorEntity.entity_id, { ...serviceSwitchState, entity_id: networkIndicatorEntity.entity_id });
     haPlatform.ha.hassStates.set(outletProtectEntity.entity_id, { ...serviceSwitchState, entity_id: outletProtectEntity.entity_id });
 
@@ -764,12 +788,22 @@ describe('Matterbridge ' + NAME, () => {
     expect(haPlatform.endpointNames.get(outletEntity.entity_id)).toBe(outletEntity.entity_id);
     expect(haPlatform.endpointNames.get(powerEntity.entity_id)).toBe(outletEntity.entity_id);
     expect(haPlatform.endpointNames.get(energyEntity.entity_id)).toBe(outletEntity.entity_id);
+    expect(haPlatform.endpointNames.has(energyTodayEntity.entity_id)).toBe(false);
+    expect(haPlatform.endpointNames.has(energyYesterdayEntity.entity_id)).toBe(false);
+    expect(haPlatform.endpointNames.has(energyMonthEntity.entity_id)).toBe(false);
     expect(haPlatform.endpointNames.has(networkIndicatorEntity.entity_id)).toBe(false);
     expect(haPlatform.endpointNames.has(outletProtectEntity.entity_id)).toBe(false);
 
     const outletEndpoint = device.getChildEndpointByOriginalId(outletEntity.entity_id);
     expect(outletEndpoint).toBeDefined();
     expect(outletEndpoint?.deviceTypes.has(onOffPlugInUnit.code)).toBe(true);
+    expect(device.hasClusterServer(ElectricalPowerMeasurement.id)).toBe(false);
+    expect(device.hasClusterServer(ElectricalEnergyMeasurement.id)).toBe(false);
+    expect(outletEndpoint?.hasClusterServer(OnOff.id)).toBe(true);
+    expect(outletEndpoint?.hasClusterServer(ElectricalPowerMeasurement.id)).toBe(true);
+    expect(outletEndpoint?.hasClusterServer(ElectricalEnergyMeasurement.id)).toBe(true);
+    expect(device.getChildEndpointByOriginalId(networkIndicatorEntity.entity_id)).toBeUndefined();
+    expect(device.getChildEndpointByOriginalId(outletProtectEntity.entity_id)).toBeUndefined();
 
     await haPlatform.onConfigure();
     expect(outletEndpoint?.getAttribute(OnOff.id, 'onOff')).toBe(true);

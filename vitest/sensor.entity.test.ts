@@ -259,11 +259,11 @@ describe('addSensorEntity', () => {
     expect(md.deviceTypes['PowerEnergy']).toContain(electricalSensor.code);
   });
 
-  it('selects the controllable outlet and ignores configuration and diagnostic switches', () => {
+  it('selects the controllable outlet and ignores categorized and uncategorized service switches', () => {
     const entities = [
       { entity_id: 'switch.outlet', entity_category: null },
       { entity_id: 'switch.outlet_network_indicator', entity_category: 'diagnostic' },
-      { entity_id: 'switch.outlet_control_protect', entity_category: 'config' },
+      { entity_id: 'switch.outlet_control_protect', entity_category: null },
     ] as any[];
 
     expect(getSingleOutletEndpoint(entities)).toBe('switch.outlet');

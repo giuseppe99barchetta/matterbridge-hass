@@ -33,6 +33,8 @@ import type { HassEntity, HassState } from './homeAssistant.js';
 import type { HomeAssistantPlatform } from './module.js';
 import type { MutableDevice } from './mutableDevice.js';
 
+const serviceSwitchIdentifier = /(?:^|[_\s.-])(?:network[_\s-]?indicator|outlet[_\s-]?control[_\s-]?protect)(?:$|[_\s.-])/i;
+
 /**
  * Look for supported sensors of the current entity
  *
@@ -121,7 +123,14 @@ export function getSingleOutletEndpoint(entities: HassEntity[]): string | undefi
  * @returns {boolean} True when the switch is a service control rather than an outlet
  */
 export function isServiceSwitch(entity: HassEntity): boolean {
-  return getDomain(entity.entity_id) === 'switch' && ['config', 'diagnostic'].includes(entity.entity_category ?? '');
+  if (getDomain(entity.entity_id) !== 'switch') return false;
+
+  if (['config', 'diagnostic'].includes(entity.entity_category ?? '')) return true;
+
+  // Some integrations omit entity_category for service switches. Inspect integration-neutral
+  // identifiers as a fallback so such controls do not become ambiguous outlet endpoints.
+  const identity = `${entity.entity_id} ${entity.translation_key ?? ''} ${entity.unique_id ?? ''}`;
+  return serviceSwitchIdentifier.test(identity);
 }
 
 /**
