@@ -210,7 +210,7 @@ describe('addSensorEntity', () => {
 
     expect(ep).toBe('switch.outlet');
     expect(md.clusters['switch.outlet']).toContain(ElectricalPowerMeasurement.id);
-    expect(Object.values(md.deviceTypes).flat()).not.toContain(electricalSensor.code);
+    expect(md.deviceTypes['switch.outlet']).toContain(electricalSensor.code);
   });
 
   it('attaches power and energy measurements to the endpoint of a single outlet', () => {
@@ -238,7 +238,7 @@ describe('addSensorEntity', () => {
     }
     expect(md.clusters['switch.outlet']).toContain(ElectricalPowerMeasurement.id);
     expect(md.clusters['switch.outlet']).toContain(ElectricalEnergyMeasurement.id);
-    expect(Object.values(md.deviceTypes).flat()).not.toContain(electricalSensor.code);
+    expect(md.deviceTypes['switch.outlet']).toContain(electricalSensor.code);
   });
 
   it('keeps electrical measurements separate when a device has no outlet', () => {

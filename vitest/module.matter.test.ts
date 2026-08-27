@@ -21,7 +21,7 @@ const MATTER_CREATE_ONLY = true;
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { invokeBehaviorCommand, invokeSubscribeHandler, MatterbridgeEndpoint, occupancySensor, onOffPlugInUnit } from 'matterbridge';
+import { electricalSensor, invokeBehaviorCommand, invokeSubscribeHandler, MatterbridgeEndpoint, occupancySensor, onOffPlugInUnit } from 'matterbridge';
 import { CYAN, db, dn, hk, idn, LogLevel, nf, or, rs, wr } from 'matterbridge/logger';
 import { Lifecycle } from 'matterbridge/matter';
 import {
@@ -41,6 +41,7 @@ import {
   OccupancySensing,
   OnOff,
   OzoneConcentrationMeasurement,
+  PowerTopology,
   Pm1ConcentrationMeasurement,
   Pm10ConcentrationMeasurement,
   Pm25ConcentrationMeasurement,
@@ -797,9 +798,11 @@ describe('Matterbridge ' + NAME, () => {
     const outletEndpoint = device.getChildEndpointByOriginalId(outletEntity.entity_id);
     expect(outletEndpoint).toBeDefined();
     expect(outletEndpoint?.deviceTypes.has(onOffPlugInUnit.code)).toBe(true);
+    expect(outletEndpoint?.deviceTypes.has(electricalSensor.code)).toBe(true);
     expect(device.hasClusterServer(ElectricalPowerMeasurement.id)).toBe(false);
     expect(device.hasClusterServer(ElectricalEnergyMeasurement.id)).toBe(false);
     expect(outletEndpoint?.hasClusterServer(OnOff.id)).toBe(true);
+    expect(outletEndpoint?.hasClusterServer(PowerTopology.id)).toBe(true);
     expect(outletEndpoint?.hasClusterServer(ElectricalPowerMeasurement.id)).toBe(true);
     expect(outletEndpoint?.hasClusterServer(ElectricalEnergyMeasurement.id)).toBe(true);
     expect(device.getChildEndpointByOriginalId(networkIndicatorEntity.entity_id)).toBeUndefined();
@@ -807,6 +810,10 @@ describe('Matterbridge ' + NAME, () => {
 
     await haPlatform.onConfigure();
     expect(outletEndpoint?.getAttribute(OnOff.id, 'onOff')).toBe(true);
+    expect(outletEndpoint?.getAttribute(PowerTopology.id, 'featureMap')).toMatchObject({ treeTopology: true });
+    expect(outletEndpoint?.getAttribute(PowerTopology.id, 'clusterRevision')).toBe(1);
+    expect(outletEndpoint?.getAttribute(ElectricalPowerMeasurement.id, 'featureMap')).toMatchObject({ alternatingCurrent: true });
+    expect(outletEndpoint?.getAttribute(ElectricalEnergyMeasurement.id, 'featureMap')).toMatchObject({ importedEnergy: true, exportedEnergy: true, cumulativeEnergy: true });
     expect(outletEndpoint?.getAttribute(ElectricalPowerMeasurement.id, 'activePower')).toBe(23000);
     expect(outletEndpoint?.getAttribute(ElectricalEnergyMeasurement.id, 'cumulativeEnergyImported')).toEqual({ energy: 100000000 });
 

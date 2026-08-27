@@ -97,7 +97,10 @@ export function addSensorEntity(
         );
       }
       platform.log.debug(`+ sensor device ${CYAN}${hassDomainSensor.deviceType.name}${db} cluster ${CYAN}${getClusterNameById(hassDomainSensor.clusterId)}${db}`);
-      if (!attachElectricalMeasurement) mutableDevice.addDeviceTypes(endpointName, hassDomainSensor.deviceType);
+      // An electrical measurement published on an outlet still needs the ElectricalSensor
+      // device type. It declares the mandatory PowerTopology cluster that associates these
+      // measurements with this endpoint instead of leaving the clusters untyped.
+      mutableDevice.addDeviceTypes(endpointName, hassDomainSensor.deviceType);
       mutableDevice.addClusterServerIds(endpointName, hassDomainSensor.clusterId);
       if (!attachElectricalMeasurement && isValidString(state.attributes['friendly_name'])) mutableDevice.setFriendlyName(endpointName, state.attributes['friendly_name']);
       platform.log.debug(`- state ${debugStringify(state)}`);
