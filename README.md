@@ -142,6 +142,16 @@ These domains are supported also like device entities and split entities.
 
 When a Home Assistant device exposes exactly one controllable `switch` together with electrical sensors (`voltage`, `current`, `power`, or `energy`), the electrical measurement clusters are added to that switch's own Matter outlet endpoint. Configuration and diagnostic switches are ignored. This lets Apple Home associate consumption with the outlet. Devices with no switch or more than one controllable switch continue to expose electrical measurements as a separate electrical sensor endpoint. Only one non-periodic, cumulative energy sensor is used for imported energy; daily, weekly, monthly, and yearly statistics are ignored.
 
+To test an outlet as an independent Matter device (rather than a child of the Matterbridge bridge), add its Home Assistant outlet entity ID to `standaloneElectricalOutlets`:
+
+```json
+{
+  "standaloneElectricalOutlets": ["switch.scrivania_ale"]
+}
+```
+
+Each selected outlet must be the only controllable switch on its Home Assistant device and have at least one supported electrical sensor. It is removed from the bridged device and exposed as its own Matter server node with a separate QR code in Matterbridge. Pair that QR code in Apple Home; all other outlets keep the normal bridged behavior.
+
 ## Supported binary_sensors:
 
 | Domain        | Supported device class (1)           | Matter device type  |
@@ -331,6 +341,10 @@ If your setup has only one air quality sensor, you can simply put the exact enti
 Enable the Robot Vacuum Cleaner in server mode. Apple Home will crash unless you use this mode! Don't try it with Apple Home cause the bridge will become unstable even if you remove it after.
 
 In addition to this well known bugs, the rvc must be a single device, it cannot have any other device types like switch or whatever. So if your integration adds any other device types, blacklist or split them.
+
+### Standalone Electrical Outlets
+
+List Home Assistant outlet entity IDs, for example `switch.scrivania_ale`, in `standaloneElectricalOutlets` to create a separate Matter server node for each qualifying outlet. Matterbridge shows a separate QR code for each node. The standalone endpoint includes On/Off, Power Topology, Electrical Power Measurement, and Electrical Energy Measurement when the matching Home Assistant sensors are available. Configuration and diagnostic switches, plus period-based energy sensors such as `energy_today`, `energy_yesterday`, and `energy_month`, remain excluded.
 
 ### Discard Hidden Entities
 

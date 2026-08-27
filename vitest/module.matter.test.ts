@@ -30,6 +30,7 @@ import {
   CarbonDioxideConcentrationMeasurement,
   CarbonMonoxideConcentrationMeasurement,
   ColorControl,
+  BridgedDeviceBasicInformation,
   DoorLock,
   ElectricalEnergyMeasurement,
   ElectricalPowerMeasurement,
@@ -817,6 +818,114 @@ describe('Matterbridge ' + NAME, () => {
     expect(outletEndpoint?.getAttribute(ElectricalPowerMeasurement.id, 'activePower')).toBe(23000);
     expect(outletEndpoint?.getAttribute(ElectricalEnergyMeasurement.id, 'cumulativeEnergyImported')).toEqual({ energy: 100000000 });
 
+    await cleanup();
+  });
+
+  it('should expose configured electrical outlets as standalone server nodes', async () => {
+    const outletDevice = {
+      area_id: null,
+      disabled_by: null,
+      entry_type: null,
+      id: 'd80898f83188759ed7329e922f00ee8a',
+      labels: [],
+      name: 'Standalone Outlet Device',
+      name_by_user: null,
+    } as unknown as HassDevice;
+    const outletEntity = {
+      area_id: null,
+      device_id: outletDevice.id,
+      disabled_by: null,
+      entity_category: null,
+      entity_id: 'switch.standalone_outlet',
+      has_entity_name: true,
+      id: '0b25a337cb83edefb1d310444ad2b8a1',
+      labels: [],
+      name: null,
+      original_name: 'Standalone Outlet',
+    } as unknown as HassEntity;
+    const powerEntity = {
+      ...outletEntity,
+      entity_id: 'sensor.standalone_outlet_power',
+      id: '0b25a337cb83edefb1d310444ad2b8a2',
+      original_name: 'Standalone Outlet Power',
+    } as unknown as HassEntity;
+    const energyEntity = {
+      ...outletEntity,
+      entity_id: 'sensor.standalone_outlet_energy',
+      id: '0b25a337cb83edefb1d310444ad2b8a3',
+      original_name: 'Standalone Outlet Energy',
+    } as unknown as HassEntity;
+    const energyTodayEntity = {
+      ...energyEntity,
+      entity_id: 'sensor.standalone_outlet_energy_today',
+      id: '0b25a337cb83edefb1d310444ad2b8a4',
+      original_name: 'Standalone Outlet Energy Today',
+    } as unknown as HassEntity;
+    const statusEntity = {
+      ...outletEntity,
+      entity_id: 'binary_sensor.standalone_outlet_status',
+      id: '0b25a337cb83edefb1d310444ad2b8a5',
+      original_name: 'Standalone Outlet Status',
+    } as unknown as HassEntity;
+    const outletState = {
+      entity_id: outletEntity.entity_id,
+      state: 'on',
+      attributes: { device_class: 'outlet', friendly_name: 'Standalone Outlet' },
+    } as unknown as HassState;
+    const powerState = {
+      entity_id: powerEntity.entity_id,
+      state: 23,
+      attributes: { state_class: 'measurement', device_class: 'power', unit_of_measurement: 'W', friendly_name: 'Standalone Outlet Power' },
+    } as unknown as HassState;
+    const energyState = {
+      entity_id: energyEntity.entity_id,
+      state: 100,
+      attributes: { state_class: 'total_increasing', device_class: 'energy', unit_of_measurement: 'kWh', friendly_name: 'Standalone Outlet Energy' },
+    } as unknown as HassState;
+
+    haPlatform.config.standaloneElectricalOutlets = [outletEntity.entity_id];
+    haPlatform.ha.hassDevices.set(outletDevice.id, outletDevice);
+    for (const entity of [outletEntity, powerEntity, energyEntity, energyTodayEntity, statusEntity]) haPlatform.ha.hassEntities.set(entity.entity_id, entity);
+    haPlatform.ha.hassStates.set(outletState.entity_id, outletState);
+    haPlatform.ha.hassStates.set(powerState.entity_id, powerState);
+    haPlatform.ha.hassStates.set(energyState.entity_id, energyState);
+    haPlatform.ha.hassStates.set(energyTodayEntity.entity_id, { ...energyState, entity_id: energyTodayEntity.entity_id, state: '4' });
+    haPlatform.ha.hassStates.set(statusEntity.entity_id, { entity_id: statusEntity.entity_id, state: 'off', attributes: { device_class: 'door' } } as HassState);
+
+    await haPlatform.onStart('Test reason');
+
+    device = haPlatform.matterbridgeDevices.get(outletEntity.entity_id) as MatterbridgeEndpoint;
+    expect(device).toBeDefined();
+    expect(device.mode).toBe('server');
+    const bridgedDevice = haPlatform.matterbridgeDevices.get(outletDevice.id) as MatterbridgeEndpoint;
+    expect(bridgedDevice).toBeDefined();
+    expect(bridgedDevice).not.toBe(device);
+    expect(haPlatform.matterbridgeDevices.get(powerEntity.entity_id)).toBe(device);
+    expect(haPlatform.matterbridgeDevices.get(energyEntity.entity_id)).toBe(device);
+    expect(haPlatform.matterbridgeDevices.has(energyTodayEntity.entity_id)).toBe(false);
+    expect(haPlatform.endpointNames.get(outletEntity.entity_id)).toBe('');
+    expect(haPlatform.endpointNames.get(powerEntity.entity_id)).toBe('');
+    expect(haPlatform.endpointNames.get(energyEntity.entity_id)).toBe('');
+    expect(haPlatform.endpointNames.has(energyTodayEntity.entity_id)).toBe(false);
+    expect(device.getChildEndpointByOriginalId(outletEntity.entity_id)).toBeUndefined();
+    expect(device.deviceTypes.has(onOffPlugInUnit.code)).toBe(true);
+    expect(device.deviceTypes.has(electricalSensor.code)).toBe(true);
+    expect(device.productId).toBe(0x8000);
+    expect(device.hasClusterServer(BridgedDeviceBasicInformation.id)).toBe(false);
+    expect(device.hasClusterServer(OnOff.id)).toBe(true);
+    expect(device.hasClusterServer(PowerTopology.id)).toBe(true);
+    expect(device.hasClusterServer(ElectricalPowerMeasurement.id)).toBe(true);
+    expect(device.hasClusterServer(ElectricalEnergyMeasurement.id)).toBe(true);
+    expect(bridgedDevice.getChildEndpointByOriginalId(outletEntity.entity_id)).toBeUndefined();
+    expect(bridgedDevice.hasClusterServer(ElectricalPowerMeasurement.id)).toBe(false);
+    expect(bridgedDevice.hasClusterServer(ElectricalEnergyMeasurement.id)).toBe(false);
+
+    await haPlatform.onConfigure();
+    expect(device.getAttribute(OnOff.id, 'onOff')).toBe(true);
+    expect(device.getAttribute(ElectricalPowerMeasurement.id, 'activePower')).toBe(23000);
+    expect(device.getAttribute(ElectricalEnergyMeasurement.id, 'cumulativeEnergyImported')).toEqual({ energy: 100000000 });
+
+    haPlatform.config.standaloneElectricalOutlets = [];
     await cleanup();
   });
 

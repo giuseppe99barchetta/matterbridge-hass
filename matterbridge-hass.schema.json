@@ -217,6 +217,17 @@
       "type": "boolean",
       "default": true
     },
+    "standaloneElectricalOutlets": {
+      "title": "Standalone Electrical Outlets",
+      "description": "Outlet entity IDs to expose as independent Matter server nodes. Each selected outlet must be the only controllable switch on its Home Assistant device and have electrical sensors (power, current, voltage, or energy). Matterbridge provides a separate QR code for every configured outlet.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true,
+      "default": [],
+      "selectEntityFrom": "description"
+    },
     "discardHiddenEntities": {
       "title": "Discard Hidden Entities",
       "description": "Discard entities with 'hidden' attribute set to true. This will prevent the plugin from exposing entities that are hidden in Home Assistant.",
