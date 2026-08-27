@@ -77,7 +77,7 @@ import {
 import { MutableDevice } from './mutableDevice.js';
 import { savePayload } from './payload.js';
 import { writeReport } from './report.js';
-import { addSensorEntity, getSingleOutletEndpoint } from './sensor.entity.js';
+import { addSensorEntity, getCumulativeEnergyEntity, getSingleOutletEndpoint, isServiceSwitch } from './sensor.entity.js';
 import { StateCache } from './stateCache.js';
 
 export interface HomeAssistantPlatformConfig extends PlatformConfig {
@@ -651,20 +651,32 @@ export class HomeAssistantPlatform extends MatterbridgeDynamicPlatform {
       const deviceEntities = Array.from(this.ha.hassEntities.values()).filter(
         (entity) => entity.device_id === device.id && !isDisabled(entity) && (!isHidden(entity) || !this.config.discardHiddenEntities),
       );
-      const eligibleOutletEntities = deviceEntities.filter((entity) => {
+      const eligibleDeviceEntities = deviceEntities.filter((entity) => {
         const state = this.ha.hassStates.get(entity.entity_id);
         return (
-          getDomain(entity.entity_id) === 'switch' &&
+          !isServiceSwitch(entity) &&
           !isSplitEntity(this, entity) &&
+          this.supportedDomains.includes(getDomain(entity.entity_id)) &&
           state !== undefined &&
           !(state.state === 'unavailable' && state.attributes?.['restored'] === true) &&
           this.validateEntity(deviceName, entity.entity_id, false) &&
           (!deviceHasValidLabelFilterEntities || satisfiesLabelFilter(this, entity))
         );
       });
-      const electricalMeasurementEndpoint = getSingleOutletEndpoint(eligibleOutletEntities);
-      if (electricalMeasurementEndpoint)
+      const hasElectricalMeasurements = eligibleDeviceEntities.some((entity) => {
+        const state = this.ha.hassStates.get(entity.entity_id);
+        return (
+          getDomain(entity.entity_id) === 'sensor' &&
+          ((state?.attributes['state_class'] === 'measurement' && ['voltage', 'current', 'power'].includes(state.attributes['device_class'] ?? '')) ||
+            (state?.attributes['state_class'] === 'total_increasing' && state.attributes['device_class'] === 'energy'))
+        );
+      });
+      const electricalMeasurementEndpoint = hasElectricalMeasurements ? getSingleOutletEndpoint(eligibleDeviceEntities) : undefined;
+      const cumulativeEnergyEntityId = getCumulativeEnergyEntity(eligibleDeviceEntities, (entity) => this.ha.hassStates.get(entity.entity_id));
+      if (electricalMeasurementEndpoint) {
         this.log.debug(`Device ${CYAN}${device.name}${db} has a single outlet ${CYAN}${electricalMeasurementEndpoint}${db}; electrical measurements will be attached to it`);
+        mutableDevice.preventRemapping(electricalMeasurementEndpoint);
+      }
 
       let hasRvc = false;
       for (const entity of deviceEntities) {
@@ -672,6 +684,10 @@ export class HomeAssistantPlatform extends MatterbridgeDynamicPlatform {
         const [domain, _name] = entity.entity_id.split('.');
         const entityName = entity.name ?? entity.original_name ?? deviceName;
         let endpointName = entity.entity_id;
+        if (isServiceSwitch(entity)) {
+          this.log.debug(`Lookup device ${CYAN}${device.name}${db} service switch ${CYAN}${entity.entity_id}${db}. Skipping...`);
+          continue;
+        }
         // Skip not supported domains.
         if (!this.supportedDomains.includes(domain)) {
           this.log.debug(`Lookup device ${CYAN}${device.name}${db} entity ${CYAN}${entity.entity_id}${db} has unsupported domain ${CYAN}${domain}${db}. Skipping...`);
@@ -724,7 +740,7 @@ export class HomeAssistantPlatform extends MatterbridgeDynamicPlatform {
           this.endpointNames.set(entity.entity_id, endpointName); // Set the endpoint name for the entity
         }
         // Lookup and add sensor domain entity.
-        const eSensor = addSensorEntity(this, mutableDevice, entity, hassState, this.airQualityRegex, battery, electricalMeasurementEndpoint);
+        const eSensor = addSensorEntity(this, mutableDevice, entity, hassState, this.airQualityRegex, battery, electricalMeasurementEndpoint, cumulativeEnergyEntityId);
         if (eSensor !== undefined) {
           endpointName = eSensor;
           this.endpointNames.set(entity.entity_id, endpointName); // Set the endpoint name for the entity
@@ -1299,7 +1315,7 @@ export class HomeAssistantPlatform extends MatterbridgeDynamicPlatform {
         endpoint = matterbridgeDevice;
       } /* v8 ignore start cause the AirQuality and PowerEnergy are now remapped to main so this branch is never taken */ else if (mappedEndpoint) {
         this.log.debug(`Update handler: Endpoint ${entityId} for ${deviceId} mapped to endpoint '${mappedEndpoint}'`);
-        endpoint = matterbridgeDevice.getChildEndpointById(mappedEndpoint);
+        endpoint = matterbridgeDevice.getChildEndpointByOriginalId(mappedEndpoint) ?? matterbridgeDevice.getChildEndpointById(mappedEndpoint);
       }
       /* v8 ignore stop */
     }

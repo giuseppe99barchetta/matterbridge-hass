@@ -21,7 +21,7 @@ const MATTER_CREATE_ONLY = true;
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { invokeBehaviorCommand, invokeSubscribeHandler, MatterbridgeEndpoint, occupancySensor } from 'matterbridge';
+import { invokeBehaviorCommand, invokeSubscribeHandler, MatterbridgeEndpoint, occupancySensor, onOffPlugInUnit } from 'matterbridge';
 import { CYAN, db, dn, hk, idn, LogLevel, nf, or, rs, wr } from 'matterbridge/logger';
 import { Lifecycle } from 'matterbridge/matter';
 import {
@@ -702,6 +702,30 @@ describe('Matterbridge ' + NAME, () => {
       name: null,
       original_name: 'Monitored Outlet Energy',
     } as unknown as HassEntity;
+    const networkIndicatorEntity = {
+      area_id: null,
+      device_id: outletDevice.id,
+      disabled_by: null,
+      entity_category: 'diagnostic',
+      entity_id: 'switch.monitored_outlet_network_indicator',
+      has_entity_name: true,
+      id: '0b25a337cb83edefb1d310444ad2b0b0',
+      labels: [],
+      name: null,
+      original_name: 'Monitored Outlet Network Indicator',
+    } as unknown as HassEntity;
+    const outletProtectEntity = {
+      area_id: null,
+      device_id: outletDevice.id,
+      disabled_by: null,
+      entity_category: 'config',
+      entity_id: 'switch.monitored_outlet_control_protect',
+      has_entity_name: true,
+      id: '0b25a337cb83edefb1d310444ad2b0b1',
+      labels: [],
+      name: null,
+      original_name: 'Monitored Outlet Control Protect',
+    } as unknown as HassEntity;
     const outletState = {
       entity_id: outletEntity.entity_id,
       state: 'on',
@@ -717,26 +741,40 @@ describe('Matterbridge ' + NAME, () => {
       state: 100,
       attributes: { state_class: 'total_increasing', device_class: 'energy', unit_of_measurement: 'kWh', friendly_name: 'Monitored Outlet Energy' },
     } as unknown as HassState;
+    const serviceSwitchState = {
+      state: 'off',
+      attributes: { device_class: 'outlet' },
+    } as unknown as HassState;
 
     haPlatform.ha.hassDevices.set(outletDevice.id, outletDevice);
     haPlatform.ha.hassEntities.set(outletEntity.entity_id, outletEntity);
     haPlatform.ha.hassEntities.set(powerEntity.entity_id, powerEntity);
     haPlatform.ha.hassEntities.set(energyEntity.entity_id, energyEntity);
+    haPlatform.ha.hassEntities.set(networkIndicatorEntity.entity_id, networkIndicatorEntity);
+    haPlatform.ha.hassEntities.set(outletProtectEntity.entity_id, outletProtectEntity);
     haPlatform.ha.hassStates.set(outletState.entity_id, outletState);
     haPlatform.ha.hassStates.set(powerState.entity_id, powerState);
     haPlatform.ha.hassStates.set(energyState.entity_id, energyState);
+    haPlatform.ha.hassStates.set(networkIndicatorEntity.entity_id, { ...serviceSwitchState, entity_id: networkIndicatorEntity.entity_id });
+    haPlatform.ha.hassStates.set(outletProtectEntity.entity_id, { ...serviceSwitchState, entity_id: outletProtectEntity.entity_id });
 
     await haPlatform.onStart('Test reason');
     device = haPlatform.matterbridgeDevices.get(outletDevice.id) as MatterbridgeEndpoint;
     expect(device).toBeDefined();
-    expect(haPlatform.endpointNames.get(outletEntity.entity_id)).toBe('');
-    expect(haPlatform.endpointNames.get(powerEntity.entity_id)).toBe('');
-    expect(haPlatform.endpointNames.get(energyEntity.entity_id)).toBe('');
+    expect(haPlatform.endpointNames.get(outletEntity.entity_id)).toBe(outletEntity.entity_id);
+    expect(haPlatform.endpointNames.get(powerEntity.entity_id)).toBe(outletEntity.entity_id);
+    expect(haPlatform.endpointNames.get(energyEntity.entity_id)).toBe(outletEntity.entity_id);
+    expect(haPlatform.endpointNames.has(networkIndicatorEntity.entity_id)).toBe(false);
+    expect(haPlatform.endpointNames.has(outletProtectEntity.entity_id)).toBe(false);
+
+    const outletEndpoint = device.getChildEndpointByOriginalId(outletEntity.entity_id);
+    expect(outletEndpoint).toBeDefined();
+    expect(outletEndpoint?.deviceTypes.has(onOffPlugInUnit.code)).toBe(true);
 
     await haPlatform.onConfigure();
-    expect(device.getAttribute(OnOff.id, 'onOff')).toBe(true);
-    expect(device.getAttribute(ElectricalPowerMeasurement.id, 'activePower')).toBe(23000);
-    expect(device.getAttribute(ElectricalEnergyMeasurement.id, 'cumulativeEnergyImported')).toEqual({ energy: 100000000 });
+    expect(outletEndpoint?.getAttribute(OnOff.id, 'onOff')).toBe(true);
+    expect(outletEndpoint?.getAttribute(ElectricalPowerMeasurement.id, 'activePower')).toBe(23000);
+    expect(outletEndpoint?.getAttribute(ElectricalEnergyMeasurement.id, 'cumulativeEnergyImported')).toEqual({ energy: 100000000 });
 
     await cleanup();
   });
@@ -1021,7 +1059,7 @@ describe('Matterbridge ' + NAME, () => {
     device = haPlatform.matterbridgeDevices.get(switchDevice.id) as MatterbridgeEndpoint;
     expect(device.construction.status).toBe(Lifecycle.Status.Active);
     expect(haPlatform.batteryVoltageEntities.size).toBe(0);
-    expect(haPlatform.endpointNames.size).toBe(4);
+    expect(haPlatform.endpointNames.size).toBe(2);
 
     const child1 = device?.getChildEndpointById(switch1Entity.entity_id.replace('.', ''));
     expect(child1).toBeDefined();

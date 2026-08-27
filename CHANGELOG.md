@@ -33,7 +33,7 @@ If you like this project and find it useful, please consider giving it a **star*
 
 ### Fixed
 
-- [sensor]: Attach electrical measurement clusters to a device's single switch outlet, allowing Apple Home to associate energy consumption with that outlet.
+- [sensor]: Attach electrical measurement clusters to a device's single controllable switch outlet, preserving the outlet as its own Matter endpoint so Apple Home can associate energy consumption with it. Ignore configuration and diagnostic switches, and exclude period-based energy statistics from cumulative imported energy.
 
 ## [1.4.0] - 2026-07-17
 

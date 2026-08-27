@@ -130,6 +130,7 @@ export class MutableDevice {
   private readonly mutableDevices = new Map<string, MutableDeviceInterface>();
   private readonly endpoints = new Map<string, MatterbridgeEndpoint>();
   private readonly remappedEndpoints = new Set<string>();
+  private readonly nonRemappableEndpoints = new Set<string>();
   private readonly splitEndpoints = new Set<string>();
 
   private readonly matterbridge: PlatformMatterbridge;
@@ -193,6 +194,7 @@ export class MutableDevice {
     this.mutableDevices.clear();
     this.endpoints.clear();
     this.remappedEndpoints.clear();
+    this.nonRemappableEndpoints.clear();
     this.splitEndpoints.clear();
   }
 
@@ -241,6 +243,18 @@ export class MutableDevice {
    */
   getRemappedEndpoints(): Set<string> {
     return this.remappedEndpoints;
+  }
+
+  /**
+   * Prevents an endpoint from being merged into the main endpoint.
+   *
+   * @param {string} endpoint - The endpoint identifier to preserve as a child endpoint
+   * @returns {this} The current instance for chaining.
+   */
+  preventRemapping(endpoint: string): this {
+    this.initializeEndpoint(endpoint);
+    this.nonRemappableEndpoints.add(endpoint);
+    return this;
   }
 
   /**
@@ -925,7 +939,7 @@ export class MutableDevice {
       // Scan the child endpoints for the same device types and clusters
       for (const [endpoint, device] of Array.from(this.mutableDevices.entries()).filter(([endpoint]) => endpoint !== '')) {
         // this.log.debug(`Remapping endpoint ${endpoint}...`);
-        let remapEndpoint = true;
+        let remapEndpoint = !this.nonRemappableEndpoints.has(endpoint);
         // Check duplicated device types
         for (const deviceType of device.deviceTypes) {
           const duplicatedDeviceTypes = Array.from(this.mutableDevices.entries())
